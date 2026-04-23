@@ -1,0 +1,3 @@
+/home/roaming/pugnale12765/project/build/CMakeFiles/main.dir
+/home/roaming/pugnale12765/project/build/CMakeFiles/edit_cache.dir
+/home/roaming/pugnale12765/project/build/CMakeFiles/rebuild_cache.dir
