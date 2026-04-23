@@ -11,6 +11,8 @@ add_executable(main
     src/main.cpp
     src/dataset.cpp
     src/sift.cpp
+    src/matching.cpp
+    src/motion.cpp
 )
 
 target_link_libraries(main ${OpenCV_LIBS})
