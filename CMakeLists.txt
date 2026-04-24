@@ -14,6 +14,7 @@ add_executable(main
     src/matching.cpp
     src/motion.cpp
     src/bbox.cpp
+    src/handle_ground_truth.cpp
 )
 
 target_link_libraries(main ${OpenCV_LIBS})
