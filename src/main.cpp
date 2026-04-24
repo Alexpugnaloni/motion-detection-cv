@@ -8,11 +8,12 @@
 #include "matching.h"
 #include "motion.h"
 #include "bbox.h"
+#include "handle_ground_truth.h"
 
 int main()
 {
-    std::string path = "../data/car/";
-    std::string category = "car";
+    std::string path = "../data/frog/";
+    std::string category = "frog";
 
     std::vector<cv::Mat> frames = loadImages(path);
 
@@ -125,6 +126,10 @@ int main()
     // ==============================
     cv::Mat final_img = frames[0].clone();
     cv::rectangle(final_img, bbox, cv::Scalar(0, 255, 0), 2);
+
+    // Load and draw the ground truth (RED) using the first frame's label
+    std::string labelPath = "../labels/" + category + "/0000.txt";
+    cv::Rect gt_bbox = handleGroundTruth(final_img, labelPath, true);
 
     cv::imshow("FINAL BOUNDING BOX", final_img);
     cv::waitKey(0);
