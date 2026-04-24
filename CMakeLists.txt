@@ -13,6 +13,7 @@ add_executable(main
     src/sift.cpp
     src/matching.cpp
     src/motion.cpp
+    src/bbox.cpp
 )
 
 target_link_libraries(main ${OpenCV_LIBS})
