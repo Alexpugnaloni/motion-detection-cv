@@ -33,9 +33,9 @@ int main()
     // ==============================
     // PARAMETRI
     // ==============================
-    float threshold = 5.0f;      // movimento minimo
-    float cluster_radius = 40.0; // densità locale
-    int density_threshold = 15;  // punti minimi per cluster
+    float threshold = 5.0f;
+    float cluster_radius = 35.0f;
+    int density_threshold = 12;
 
     std::vector<cv::Point2f> all_moving_points;
 
@@ -68,7 +68,7 @@ int main()
         filterPoints(all_moving_points, 100.0f);
 
     // ==============================
-    // 🔥 DENSITY CLUSTERING
+    // DENSITY CLUSTERING
     // ==============================
     std::vector<cv::Point2f> final_points;
 
@@ -84,7 +84,7 @@ int main()
             }
         }
 
-        if (count > density_threshold)
+        if (count > density_threshold && count < 200)
         {
             final_points.push_back(filtered_points[i]);
         }
@@ -94,7 +94,7 @@ int main()
               << final_points.size() << std::endl;
 
     // ==============================
-    // DEBUG
+    // DEBUG CLUSTER
     // ==============================
     cv::Mat debug = frames[0].clone();
 
@@ -107,27 +107,53 @@ int main()
     cv::waitKey(0);
 
     // ==============================
-    // BOUNDING BOX
+    // BOUNDING BOX (percentili)
     // ==============================
     cv::Rect bbox = computeBoundingBox(final_points);
 
     // ==============================
-    // 🔥 PADDING (IMPORTANTE)
+    // 🔥 ESPANSIONE BASATA SU DISTRIBUZIONE
     // ==============================
-    int padding = 15;
+    float xmin = 1e9, xmax = -1e9;
+    float ymin = 1e9, ymax = -1e9;
 
-    bbox.x = std::max(0, bbox.x - padding);
-    bbox.y = std::max(0, bbox.y - padding);
-    bbox.width = std::min(frames[0].cols - bbox.x, bbox.width + 2 * padding);
-    bbox.height = std::min(frames[0].rows - bbox.y, bbox.height + 2 * padding);
+    for (const auto& p : final_points)
+    {
+        xmin = std::min(xmin, p.x);
+        xmax = std::max(xmax, p.x);
+        ymin = std::min(ymin, p.y);
+        ymax = std::max(ymax, p.y);
+    }
+
+    float range_x = xmax - xmin;
+    float range_y = ymax - ymin;
+
+    // espansione proporzionale
+    bbox.x -= 0.2f * range_x;
+    bbox.y -= 0.2f * range_y;
+    bbox.width += 0.4f * range_x;
+    bbox.height += 0.4f * range_y;
+
+    // ==============================
+    // CLAMP
+    // ==============================
+    bbox.x = std::max(0, bbox.x);
+    bbox.y = std::max(0, bbox.y);
+
+    bbox.width = std::min(frames[0].cols - bbox.x, bbox.width);
+    bbox.height = std::min(frames[0].rows - bbox.y, bbox.height);
 
     // ==============================
     // VISUALIZZAZIONE
     // ==============================
     cv::Mat final_img = frames[0].clone();
-    cv::rectangle(final_img, bbox, cv::Scalar(0, 255, 0), 2);
 
-    // Load and draw the ground truth (RED) using the first frame's label
+    // Predicted bbox (verde)
+    cv::rectangle(final_img, bbox, cv::Scalar(0, 255, 0), 2);
+    cv::putText(final_img, "PRED", cv::Point(bbox.x, bbox.y - 5),
+                cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1);
+
+    // Ground truth (rosso)
     std::string labelPath = "../labels/" + category + "/0000.txt";
     cv::Rect gt_bbox = handleGroundTruth(final_img, labelPath, true);
 
