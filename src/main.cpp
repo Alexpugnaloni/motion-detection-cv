@@ -1,21 +1,20 @@
 #include <iostream>
 #include <vector>
+#include <fstream>
 #include <opencv2/opencv.hpp>
 
 #include "dataset.h"
 #include "sift.h"
 #include "matching.h"
 #include "motion.h"
+#include "bbox.h"
 
 int main()
 {
-    // Path relativo (IMPORTANTE: siamo in build/)
-    std::string path = "../data/sheep/";
+    std::string path = "../data/car/";
+    std::string category = "car";
 
-    // Caricamento immagini
     std::vector<cv::Mat> frames = loadImages(path);
-
-    std::cout << "Numero di frame caricati: " << frames.size() << std::endl;
 
     if (frames.empty())
     {
@@ -24,31 +23,19 @@ int main()
     }
 
     // ==============================
-    // SIFT sul frame 0
+    // SIFT frame 0
     // ==============================
     std::vector<cv::KeyPoint> kp0;
     cv::Mat desc0;
-
     computeSIFT(frames[0], kp0, desc0);
-
-    std::cout << "Numero keypoints frame 0: " << kp0.size() << std::endl;
-
-    // Debug keypoints
-    cv::Mat output;
-    cv::drawKeypoints(frames[0], kp0, output);
-
-    cv::imshow("SIFT Keypoints - Frame 0", output);
-    cv::waitKey(0);
 
     // ==============================
     // PARAMETRI
     // ==============================
-    float threshold = 4.0f;
-    float radius = 70.0f;
+    float threshold = 5.0f;      // movimento minimo
+    float cluster_radius = 40.0; // densità locale
+    int density_threshold = 15;  // punti minimi per cluster
 
-    // ==============================
-    // ACCUMULO GLOBALE
-    // ==============================
     std::vector<cv::Point2f> all_moving_points;
 
     // ==============================
@@ -61,84 +48,102 @@ int main()
 
         computeSIFT(frames[i], kpi, desci);
 
-        // Matching con frame 0
-        std::vector<cv::DMatch> matches = matchFeatures(desc0, desci);
+        std::vector<cv::DMatch> matches =
+            matchFeatures(desc0, desci);
 
-        std::cout << "Frame " << i << " -> matches: "
-                  << matches.size() << std::endl;
-
-        // Motion analysis
         std::vector<cv::Point2f> moving_points =
             extractMovingPoints(kp0, kpi, matches, threshold);
 
-        std::cout << "Frame " << i << " -> moving points: "
-                  << moving_points.size() << std::endl;
-
-        // Accumulo globale
         accumulateMovingPoints(all_moving_points, moving_points);
-
-        // ==============================
-        // DEBUG MATCH
-        // ==============================
-        cv::Mat img_matches;
-        cv::drawMatches(frames[0], kp0,
-                        frames[i], kpi,
-                        matches, img_matches);
-
-        cv::imshow("Matches frame 0 - frame " + std::to_string(i), img_matches);
-
-        // ==============================
-        // DEBUG MOVIMENTO (FRAME CORRENTE)
-        // ==============================
-        cv::Mat debug = frames[0].clone();
-
-        for (const auto& p : moving_points)
-        {
-            cv::circle(debug, p, 3, cv::Scalar(0, 0, 255), -1);
-        }
-
-        cv::imshow("Moving Points (Frame 0) - frame " + std::to_string(i), debug);
-
-        cv::waitKey(30); // automatico
     }
 
-    // ==============================
-    // DEBUG ACCUMULO (NO FILTER)
-    // ==============================
     std::cout << "Totale punti accumulati: "
               << all_moving_points.size() << std::endl;
 
-    cv::Mat debug_all = frames[0].clone();
-
-    for (const auto& p : all_moving_points)
-    {
-        cv::circle(debug_all, p, 2, cv::Scalar(255, 0, 0), -1);
-    }
-
-    cv::imshow("ALL MOVING POINTS (NO FILTER)", debug_all);
-    cv::waitKey(0);
-
     // ==============================
-    // 🔥 FILTRO (CLUSTER)
+    // FILTRO SPAZIALE BASE
     // ==============================
     std::vector<cv::Point2f> filtered_points =
-        filterPoints(all_moving_points, radius);
-
-    std::cout << "Punti filtrati: "
-              << filtered_points.size() << std::endl;
+        filterPoints(all_moving_points, 100.0f);
 
     // ==============================
-    // DEBUG FILTRO
+    // 🔥 DENSITY CLUSTERING
     // ==============================
-    cv::Mat filtered_debug = frames[0].clone();
+    std::vector<cv::Point2f> final_points;
 
-    for (const auto& p : filtered_points)
+    for (int i = 0; i < filtered_points.size(); i++)
     {
-        cv::circle(filtered_debug, p, 3, cv::Scalar(0, 0, 255), -1);
+        int count = 0;
+
+        for (int j = 0; j < filtered_points.size(); j++)
+        {
+            if (cv::norm(filtered_points[i] - filtered_points[j]) < cluster_radius)
+            {
+                count++;
+            }
+        }
+
+        if (count > density_threshold)
+        {
+            final_points.push_back(filtered_points[i]);
+        }
     }
 
-    cv::imshow("FILTERED POINTS", filtered_debug);
+    std::cout << "Punti finali (cluster): "
+              << final_points.size() << std::endl;
+
+    // ==============================
+    // DEBUG
+    // ==============================
+    cv::Mat debug = frames[0].clone();
+
+    for (const auto& p : final_points)
+    {
+        cv::circle(debug, p, 3, cv::Scalar(0, 255, 255), -1);
+    }
+
+    cv::imshow("FINAL CLUSTER", debug);
     cv::waitKey(0);
+
+    // ==============================
+    // BOUNDING BOX
+    // ==============================
+    cv::Rect bbox = computeBoundingBox(final_points);
+
+    // ==============================
+    // 🔥 PADDING (IMPORTANTE)
+    // ==============================
+    int padding = 15;
+
+    bbox.x = std::max(0, bbox.x - padding);
+    bbox.y = std::max(0, bbox.y - padding);
+    bbox.width = std::min(frames[0].cols - bbox.x, bbox.width + 2 * padding);
+    bbox.height = std::min(frames[0].rows - bbox.y, bbox.height + 2 * padding);
+
+    // ==============================
+    // VISUALIZZAZIONE
+    // ==============================
+    cv::Mat final_img = frames[0].clone();
+    cv::rectangle(final_img, bbox, cv::Scalar(0, 255, 0), 2);
+
+    cv::imshow("FINAL BOUNDING BOX", final_img);
+    cv::waitKey(0);
+
+    // ==============================
+    // OUTPUT
+    // ==============================
+    std::ofstream out("../output/" + category + ".txt");
+
+    out << bbox.x << " "
+        << bbox.y << " "
+        << bbox.x + bbox.width << " "
+        << bbox.y + bbox.height << std::endl;
+
+    out.close();
+
+    cv::imwrite("../images_output/" + category + ".png", final_img);
+
+    std::cout << "Output salvato!" << std::endl;
 
     return 0;
 }
