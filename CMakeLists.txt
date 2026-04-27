@@ -17,4 +17,10 @@ add_executable(main
     src/handle_ground_truth.cpp
 )
 
+add_executable(evaluate_metrics
+    src/evaluate_metrics.cpp
+    src/metrics.cpp
+)
+
 target_link_libraries(main ${OpenCV_LIBS})
+target_link_libraries(evaluate_metrics ${OpenCV_LIBS})
